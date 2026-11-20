@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Descanso Gym</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#121518">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Descanso">
+<style>
+  /* Layout: una columna centrada. Reloj grande arriba, botones al alcance del pulgar, registros y promedio abajo */
+  :root {
+    --bg: #eceeed;
+    --surface: #ffffff;
+    --fg: #14181b;
+    --muted: #5d676d;
+    --line: #d3d8d9;
+    --accent: #d8401c;      /* serie */
+    --accent-fg: #ffffff;
+    --rest: #2467b3;        /* descanso */
+    --rest-fg: #ffffff;
+    --track: #dde1e1;
+    --font-display: "Roboto Condensed", "Arial Narrow", "Helvetica Neue", sans-serif-condensed, sans-serif;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121518;
+      --surface: #1b1f23;
+      --fg: #eef1f2;
+      --muted: #9aa5ab;
+      --line: #2c3338;
+      --accent: #ff6a3d;
+      --accent-fg: #14181b;
+      --rest: #6db0ff;
+      --rest-fg: #0f1a26;
+      --track: #2a3035;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.4;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.6rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  h2 {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .mini {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--surface);
+    font-size: 1.15rem; line-height: 1;
+  }
+
+  /* Reloj */
+  .dial { position: relative; width: min(100%, 320px); aspect-ratio: 1; margin: 0 auto; --phase: var(--muted); }
+  .dial[data-phase="work"] { --phase: var(--accent); }
+  .dial[data-phase="rest"] { --phase: var(--rest); }
+  .dial svg { width: 100%; height: 100%; transform: rotate(-90deg); display: block; }
+  .dial .track { fill: none; stroke: var(--track); stroke-width: 12; }
+  .dial .bar { fill: none; stroke: var(--phase); stroke-width: 12; stroke-linecap: round; }
+  .readout {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    text-align: center; padding: 0 28px;
+  }
+  .time {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(4.5rem, 24vw, 6.5rem);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .status {
+    color: var(--phase);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    text-wrap: balance;
+  }
+
+  /* Botones principales */
+  .actions { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+  .actions button { padding: 16px 12px; border-radius: 12px; font-weight: 600; font-size: 1.1rem; }
+  #primary { background: var(--accent); color: var(--accent-fg); border: 0; }
+  #primary[data-phase="work"] { background: var(--rest); color: var(--rest-fg); }
+  #primary[data-phase="rest"] { background: var(--accent); color: var(--accent-fg); }
+  #stop { background: var(--surface); border: 1px solid var(--line); }
+
+  /* Ajustes */
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px 16px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
+  .row + .row { border-top: 1px solid var(--line); }
+  .row small { display: block; color: var(--muted); font-size: 0.78rem; }
+  .step { display: flex; align-items: center; gap: 10px; }
+  .step output {
+    font-family: var(--font-display); font-weight: 700; font-size: 1.4rem;
+    min-width: 5.5ch; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .check { cursor: pointer; }
+  .check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+
+  /* Registros */
+  .stats-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .link { background: none; border: 0; padding: 6px 0; color: var(--muted); font-size: 0.875rem; text-decoration: underline; text-underline-offset: 3px; }
+  .numbers { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; }
+  .num { min-width: 0; }
+  .num span { display: block; color: var(--muted); font-size: 0.78rem; }
+  .num strong {
+    font-family: var(--font-display); font-weight: 700; line-height: 1.05;
+    font-size: 1.7rem; font-variant-numeric: tabular-nums;
+  }
+  .num.big strong { font-size: 2.6rem; color: var(--accent); }
+  .log { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+  .log li { display: flex; justify-content: space-between; padding: 9px 0; font-variant-numeric: tabular-nums; }
+  .log li + li { border-top: 1px solid var(--line); }
+  .log .t { font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; }
+  .empty { color: var(--muted); font-size: 0.9rem; padding: 12px 0; margin: 0; }
+  .hint { color: var(--muted); font-size: 0.8125rem; margin: 0; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>Descanso Gym</h1>
+
+  <section class="dial" id="dial" data-phase="idle">
+    <svg viewBox="0 0 240 240" aria-hidden="true">
+      <circle class="track" cx="120" cy="120" r="104"></circle>
+      <circle class="bar" id="bar" cx="120" cy="120" r="104"></circle>
+    </svg>
+    <div class="readout">
+      <div class="time" id="time" role="timer">0:00</div>
+      <div class="status" id="status">Listo para empezar</div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="primary" data-phase="idle">Iniciar</button>
+    <button id="stop" disabled>Detener</button>
+  </div>
+
+  <section class="panel" aria-label="Ajustes">
+    <div class="row">
+      <div>Serie, máximo<small>Termina sola al llegar aquí</small></div>
+      <div class="step">
+        <button class="mini" id="workMinus" aria-label="Menos tiempo de serie">−</button>
+        <output id="workVal">1:00</output>
+        <button class="mini" id="workPlus" aria-label="Más tiempo de serie">+</button>
+      </div>
+    </div>
+    <div class="row">
+      <div>Descanso<small>Después empieza otra serie</small></div>
+      <div class="step">
+        <button class="mini" id="restMinus" aria-label="Menos descanso">−</button>
+        <output id="restVal">1:00</output>
+        <button class="mini" id="restPlus" aria-label="Más descanso">+</button>
+      </div>
+    </div>
+    <label class="row check" for="keepOn">
+      <span>Mantener pantalla encendida<small>Solo si el teléfono pausa la app al apagarse</small></span>
+      <input type="checkbox" id="keepOn">
+    </label>
+  </section>
+
+  <section class="stack">
+    <div class="stats-head">
+      <h2>Tiempo de actividad</h2>
+      <button class="link" id="clear">Borrar registros</button>
+    </div>
+    <div class="numbers">
+      <div class="num big"><span>Promedio</span><strong id="avg">—</strong></div>
+      <div class="num"><span>Series</span><strong id="count">0</strong></div>
+      <div class="num"><span>Más larga</span><strong id="best">—</strong></div>
+    </div>
+    <div class="panel" style="padding-block:0;">
+      <p class="empty" id="empty">Aquí aparece el tiempo de cada serie al terminarla.</p>
+      <ul class="log" id="log"></ul>
+    </div>
+  </section>
+
+  <p class="hint">En la pantalla bloqueada aparece el control de reproducción con el tiempo. El botón de siguiente (⏭) termina la serie o salta el descanso, y el de detener termina el ciclo.</p>
+</main>
+
+<script>
+(function () {
+  var KEY = "descanso-gym-v2";
+  var C = 2 * Math.PI * 104;
+
+  var workMax = 60;          // segundos; 0 = sin límite
+  var restLen = 60;          // segundos
+  var records = [];          // segundos de cada serie
+  var phase = "idle";        // idle | work | rest
+  var phaseStart = 0;
+  var audioCtx = null;
+  var scheduled = [];
+  var worker = null, fallbackId = null;
+  var wakeLock = null;
+  var clearArmed = null;
+  var audioEl = null, wavUrl = null, mediaSig = "", mediaPosKey = "";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var bar = $("bar"), dial = $("dial"), primary = $("primary");
+  bar.style.strokeDasharray = C;
+
+  function fmt(sec) {
+    sec = Math.max(0, Math.round(sec));
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  /* ---------- guardado ---------- */
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ work: workMax, rest: restLen, records: records })); } catch (e) {}
+  }
+  function load() {
+    try {
+      var d = JSON.parse(localStorage.getItem(KEY) || "null");
+      if (!d) return;
+      if (typeof d.work === "number" && d.work >= 0 && d.work <= 600) workMax = d.work;
+      if (typeof d.rest === "number" && d.rest >= 10 && d.rest <= 600) restLen = d.rest;
+      if (Array.isArray(d.records)) records = d.records.filter(function (x) { return typeof x === "number" && x > 0; }).slice(-300);
+    } catch (e) {}
+  }
+
+  /* ---------- tiempos ---------- */
+  function deadline() {
+    if (phase === "work") return workMax > 0 ? phaseStart + workMax * 1000 : Infinity;
+    if (phase === "rest") return phaseStart + restLen * 1000;
+    return Infinity;
+  }
+
+  // Avanza las fases que ya vencieron (también si la app estuvo dormida).
+  function advance(now) {
+    var changed = false;
+    for (var guard = 0; guard < 600; guard++) {
+      var d = deadline();
+      if (now < d) break;
+      if (phase === "work") { records.push(workMax); phase = "rest"; phaseStart = d; }
+      else { phase = "work"; phaseStart = d; }
+      changed = true;
+    }
+    return changed;
+  }
+
+  /* ---------- sonido de avisos ---------- */
+  function ensureAudio() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch (e) {}
+  }
+
+  function beepAt(whenMs, freq, dur, vol, track) {
+    if (!audioCtx) return;
+    var delta = (whenMs - Date.now()) / 1000;
+    if (delta < -0.2) return;
+    try {
+      var t0 = audioCtx.currentTime + Math.max(0, delta);
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0 + dur + 0.02);
+      if (track) scheduled.push({ o: o, g: g });
+    } catch (e) {}
+  }
+  function pattern(whenMs, kind, track) {
+    if (kind === "rest") {          // termina la serie: dos tonos que bajan
+      beepAt(whenMs, 880, 0.16, 0.4, track);
+      beepAt(whenMs + 220, 660, 0.2, 0.4, track);
+    } else {                        // empieza la serie: tres tonos que suben
+      beepAt(whenMs, 784, 0.14, 0.4, track);
+      beepAt(whenMs + 200, 784, 0.14, 0.4, track);
+      beepAt(whenMs + 400, 1046, 0.25, 0.4, track);
+    }
+  }
+  function cancelScheduled() {
+    scheduled.forEach(function (s) {
+      try { s.o.stop(0); } catch (e) {}
+      try { s.o.disconnect(); s.g.disconnect(); } catch (e) {}
+    });
+    scheduled = [];
+  }
+  // Programa los avisos de los próximos ciclos en el reloj del audio, que sigue con la pantalla apagada.
+  function scheduleAhead() {
+    cancelScheduled();
+    if (phase === "idle" || !audioCtx) return;
+    var now = Date.now(), horizon = now + 30 * 60000;
+    var t = deadline(), ph = phase;
+    if (!isFinite(t)) return;
+    for (var n = 0; t < horizon && n < 80; n++) {
+      if (ph === "work") {
+        pattern(t, "rest", true);
+        ph = "rest"; t += restLen * 1000;
+      } else {
+        for (var k = 3; k >= 1; k--) beepAt(t - k * 1000, 600, 0.08, 0.3, true);
+        pattern(t, "work", true);
+        ph = "work";
+        if (workMax <= 0) break;
+        t += workMax * 1000;
+      }
+    }
+  }
+  function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
+
+  /* ---------- control en la pantalla de bloqueo ---------- */
+  // Un audio casi inaudible en bucle hace que el sistema muestre el control de reproducción
+  // y mantenga la app activa con la pantalla apagada.
+  function makeWav() {
+    var sr = 8000, n = sr * 2;
+    var buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    function str(o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+    str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE");
+    str(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, "data"); v.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * 50 * i / sr) * 3), true);
+    return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+  }
+  function keepPlaying() {
+    if (audioEl && phase !== "idle") { var p = audioEl.play(); if (p && p.catch) p.catch(function () {}); }
+  }
+  function setupMediaHandlers() {
+    if (!("mediaSession" in navigator)) return;
+    var ms = navigator.mediaSession;
+    function set(a, f) { try { ms.setActionHandler(a, f); } catch (e) {} }
+    set("play", keepPlaying);
+    set("pause", keepPlaying);
+    set("nexttrack", primaryAction);
+    set("stop", stopAll);
+    set("previoustrack", null);
+  }
+  function startMedia() {
+    try {
+      if (!audioEl) {
+        audioEl = new Audio();
+        audioEl.loop = true;
+        wavUrl = wavUrl || makeWav();
+        audioEl.src = wavUrl;
+        audioEl.addEventListener("pause", function () { if (phase !== "idle") setTimeout(keepPlaying, 300); });
+        setupMediaHandlers();
+      }
+      var p = audioEl.play(); if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
+  }
+  function stopMedia() {
+    try {
+      if (audioEl) audioEl.pause();
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.metadata = null;
+        navigator.mediaSession.playbackState = "none";
+      }
+    } catch (e) {}
+    mediaSig = ""; mediaPosKey = "";
+  }
+  function updateMedia(timeText, n, avgText) {
+    if (!("mediaSession" in navigator) || phase === "idle") return;
+    try {
+      var ms = navigator.mediaSession;
+      var title = phase === "work" ? "Serie " + n + " · " + timeText : "Descanso · " + timeText;
+      if (title !== mediaSig) {
+        mediaSig = title;
+        ms.metadata = new MediaMetadata({
+          title: title,
+          artist: phase === "work" ? "Serie en curso" : "Descansando, sigue la serie " + n,
+          album: "Promedio " + avgText,
+          artwork: [{ src: "icon-512.png", sizes: "512x512", type: "image/png" }]
+        });
+        ms.playbackState = "playing";
+      }
+      var dur = phase === "work" ? workMax : restLen;
+      var key = phase + ":" + phaseStart + ":" + dur;
+      if (key !== mediaPosKey && dur > 0 && ms.setPositionState) {
+        mediaPosKey = key;
+        var pos = Math.min(dur, Math.max(0, (Date.now() - phaseStart) / 1000));
+        ms.setPositionState({ duration: dur, position: pos, playbackRate: 1 });
+      }
+    } catch (e) {}
+  }
+
+  /* ---------- pantalla encendida (opcional) ---------- */
+  async function takeWakeLock() {
+    try {
+      if ($("keepOn").checked && navigator.wakeLock && !wakeLock && phase !== "idle") {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", function () { wakeLock = null; });
+      }
+    } catch (e) {}
+  }
+  function dropWakeLock() {
+    try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
+  }
+
+  /* ---------- reloj de fondo ---------- */
+  function startTicker() {
+    stopTicker();
+    try {
+      var url = URL.createObjectURL(new Blob(["setInterval(function(){postMessage(1)},250)"], { type: "text/javascript" }));
+      worker = new Worker(url);
+      worker.onmessage = tick;
+    } catch (e) {
+      worker = null;
+      fallbackId = setInterval(tick, 250);
+    }
+  }
+  function stopTicker() {
+    if (worker) { worker.terminate(); worker = null; }
+    if (fallbackId) { clearInterval(fallbackId); fallbackId = null; }
+  }
+
+  function tick() {
+    if (phase === "idle") return;
+    if (advance(Date.now())) { save(); buzz(phase === "work" ? [150, 80, 150, 80, 300] : [300, 100, 300]); }
+    render();
+  }
+
+  /* ---------- acciones ---------- */
+  function start() {
+    ensureAudio();
+    startMedia();
+    phase = "work"; phaseStart = Date.now();
+    startTicker();
+    takeWakeLock();
+    scheduleAhead();
+    beepAt(Date.now(), 784, 0.12, 0.35, false);
+    render();
+  }
+  function endWork() {
+    var now = Date.now();
+    var secs = Math.max(1, Math.round((now - phaseStart) / 1000));
+    records.push(secs);
+    phase = "rest"; phaseStart = now;
+    save();
+    scheduleAhead();
+    pattern(now, "rest", false);
+    buzz([200, 100, 200]);
+    render();
+  }
+  function skipRest() {
+    var now = Date.now();
+    phase = "work"; phaseStart = now;
+    scheduleAhead();
+    pattern(now, "work", false);
+    buzz([150, 80, 300]);
+    render();
+  }
+  function stopAll() {
+    if (phase === "work") {
+      var secs = Math.round((Date.now() - phaseStart) / 1000);
+      if (secs >= 1) records.push(secs);
+    }
+    phase = "idle";
+    cancelScheduled(); stopTicker(); stopMedia(); dropWakeLock();
+    save();
+    render();
+  }
+  function primaryAction() {
+    if (phase === "idle") start();
+    else if (phase === "work") endWork();
+    else skipRest();
+  }
+
+  primary.addEventListener("click", primaryAction);
+  $("stop").addEventListener("click", stopAll);
+
+  function afterSettingChange() {
+    save();
+    if (phase !== "idle") { tick(); scheduleAhead(); }
+    render();
+  }
+  $("workMinus").addEventListener("click", function () { workMax = workMax <= 10 ? 0 : workMax - 5; afterSettingChange(); });
+  $("workPlus").addEventListener("click", function () { workMax = workMax === 0 ? 10 : Math.min(600, workMax + 5); afterSettingChange(); });
+  $("restMinus").addEventListener("click", function () { restLen = Math.max(10, restLen - 5); afterSettingChange(); });
+  $("restPlus").addEventListener("click", function () { restLen = Math.min(600, restLen + 5); afterSettingChange(); });
+
+  $("keepOn").addEventListener("change", function () {
+    if ($("keepOn").checked) takeWakeLock(); else dropWakeLock();
+  });
+
+  $("clear").addEventListener("click", function () {
+    var b = $("clear");
+    if (!records.length) return;
+    if (clearArmed) {
+      clearTimeout(clearArmed); clearArmed = null;
+      records = []; save(); b.textContent = "Borrar registros"; render();
+    } else {
+      b.textContent = "Toca otra vez para borrar";
+      clearArmed = setTimeout(function () { clearArmed = null; b.textContent = "Borrar registros"; }, 3000);
+    }
+  });
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && phase !== "idle") {
+      if (audioCtx && audioCtx.state === "suspended") { try { audioCtx.resume(); } catch (e) {} }
+      keepPlaying(); takeWakeLock(); tick();
+    }
+  });
+
+  /* ---------- pantalla ---------- */
+  function render() {
+    var now = Date.now();
+    var n = records.length + 1;
+    var timeText = "0:00", progress = 0, status = "Listo para empezar";
+
+    if (phase === "work") {
+      var el = now - phaseStart;
+      timeText = fmt(Math.floor(el / 1000));
+      progress = workMax > 0 ? el / (workMax * 1000) : (el % 60000) / 60000;
+      status = "Serie " + n + " en curso";
+    } else if (phase === "rest") {
+      var left = deadline() - now;
+      timeText = fmt(Math.ceil(left / 1000));
+      progress = left / (restLen * 1000);
+      status = "Descanso · sigue la serie " + n;
+    }
+
+    $("time").textContent = timeText;
+    $("status").textContent = status;
+    dial.setAttribute("data-phase", phase);
+    bar.style.strokeDashoffset = C * (1 - Math.max(0, Math.min(1, progress)));
+
+    primary.setAttribute("data-phase", phase);
+    primary.textContent = phase === "idle" ? "Iniciar" : phase === "work" ? "Terminar serie" : "Saltar descanso";
+    $("stop").disabled = phase === "idle";
+
+    $("workVal").textContent = workMax > 0 ? fmt(workMax) : "Sin límite";
+    $("restVal").textContent = fmt(restLen);
+
+    var sum = records.reduce(function (a, b) { return a + b; }, 0);
+    var avgText = records.length ? fmt(sum / records.length) : "—";
+    $("avg").textContent = avgText;
+    $("count").textContent = records.length;
+    $("best").textContent = records.length ? fmt(Math.max.apply(null, records)) : "—";
+    $("empty").hidden = records.length > 0;
+
+    var log = $("log");
+    if (log.getAttribute("data-n") !== String(records.length)) {
+      log.setAttribute("data-n", String(records.length));
+      log.innerHTML = "";
+      for (var i = records.length - 1; i >= 0; i--) {
+        var li = document.createElement("li");
+        var a = document.createElement("span"); a.textContent = "Serie " + (i + 1);
+        var b = document.createElement("span"); b.className = "t"; b.textContent = fmt(records[i]);
+        li.appendChild(a); li.appendChild(b);
+        log.appendChild(li);
+      }
+    }
+
+    updateMedia(timeText, n, avgText);
+  }
+
+  load();
+  render();
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
